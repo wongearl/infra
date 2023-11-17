@@ -22,7 +22,7 @@ spec:
         value: SonatypeNexusRepositoryClient-build
 
   nodeSelector:
-    topology.kubernetes.io/zone: beijing
+    kubernetes.io/os: linux
 
   hooks:
     exit:

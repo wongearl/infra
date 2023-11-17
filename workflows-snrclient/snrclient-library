@@ -1,0 +1,321 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ClusterWorkflowTemplate
+metadata:
+  name: library
+spec:
+  volumeClaimTemplates:
+    - metadata:
+        name: work
+      spec:
+        accessModes: ["ReadWriteMany"]
+        storageClassName: "standard"
+        resources:
+          requests:
+            storage: 800Mi
+  templates:
+  - name: clone
+    inputs:
+      parameters:
+        - name: repo
+        - name: branch
+        - name: pr
+        - name: target
+          default: .
+    container:
+      volumeMounts:
+        - mountPath: /work
+          name: work
+      image: ghcr.io/linuxsuren/gogit:v0.0.13
+      workingDir: /work
+      args:
+        - checkout
+        - --url
+        - "{{inputs.parameters.repo}}"
+        - --branch
+        - "{{=sprig.trimPrefix('refs/heads/', inputs.parameters['branch'])}}"
+        - --pr
+        - "{{inputs.parameters.pr}}"
+        - --version-output
+        - /work/version
+        - --version-trim-prefix
+        - release-
+        - --target={{inputs.parameters.target}}
+    outputs:
+      parameters:
+      - name: version
+        valueFrom:
+          path: /work/version
+    activeDeadlineSeconds: 1800
+
+  - name: code-check
+    container:
+      image: docker.io/library/golang:1.20
+      volumeMounts:
+        - name: work
+          mountPath: /work
+      workingDir: /work
+      env:
+        - name: GOPROXY
+          value: https://goproxy.cn,direct
+          #value: http://goproxy.goproxy.svc:8081,direct
+        - name: GOSUMDB
+          value: gosum.io+ce6e7565+AY5qEHUk/qmHc5btzW45JVoENfazw8LielDsaI+lEbq6
+      command:
+        - make
+      args:
+        - vet
+        - fmt
+    activeDeadlineSeconds: 1800
+
+  - name: git-diff
+    container:
+      volumeMounts:
+        - mountPath: /work
+          name: work
+      image: alpine/git:v2.26.2
+      workingDir: /work
+      args:
+        - diff
+        - --exit-code
+
+  - name: go-test
+    container:
+      image: docker.io/library/golang:1.20
+      volumeMounts:
+        - name: work
+          mountPath: /work
+      workingDir: /work
+      env:
+        - name: GOPROXY
+          value: https://goproxy.cn,direct
+          # value: http://goproxy.goproxy.svc:8081,direct
+        - name: GOSUMDB
+          value: gosum.io+ce6e7565+AY5qEHUk/qmHc5btzW45JVoENfazw8LielDsaI+lEbq6
+      command:
+      - go
+      - test
+      - ./...
+      - -coverprofile=coverage.out
+    activeDeadlineSeconds: 1800
+  - name: image
+    inputs:
+      parameters:
+        - name: image
+        - name: dockerfile
+        - name: tag
+          default: master
+        - name: arg-extra
+          default: 'empty'
+        - name: server
+          default: '172.11.0.206:30002'
+        - name: dpkVersion
+          default: DPDK_VERSION
+        - name: repo
+          default: ''
+    outputs:
+      parameters:
+        - name: image
+          value: 172.11.0.206:30002/library/{{inputs.parameters.image}}
+    volumes:
+      - name: docker-config
+        secret:
+          secretName: docker-config
+      - name: cache
+        hostPath:
+          path: /mnt/data
+          type: DirectoryOrCreate
+      - name: buildkit
+        configMap:
+          name: buildkit
+    hostAliases:
+      - ip: "192.168.21.110"
+        hostnames:
+        - "harbor.wongearl.com"
+    activeDeadlineSeconds: 2400
+    retryStrategy:
+      limit: "6"
+      retryPolicy: OnFailure
+    container:
+      image: docker.io/moby/buildkit:v0.11.6-rootless
+      volumeMounts:
+        - name: work
+          mountPath: /work
+        - name: docker-config
+          mountPath: /.docker
+        - name: cache
+          mountPath: /cache
+        - mountPath: /etc/buildkit/
+          name: buildkit
+      workingDir: /work/
+      securityContext:
+        privileged: true
+        seccompProfile:
+          type: Unconfined
+      env:
+        - name: BUILDKITD_FLAGS
+          value: --oci-worker-no-process-sandbox --config=/etc/buildkit/buildkitd.toml
+        - name: DOCKER_CONFIG
+          value: /.docker
+      command:
+        - buildctl-daemonless.sh
+      args:
+        - build
+        - --frontend
+        - dockerfile.v0
+        - --local
+        - context=.
+        - --local
+        - dockerfile={{inputs.parameters.dockerfile}}
+        - --output
+        - type=image,name={{inputs.parameters.server}}/{{inputs.parameters.image}},push=true,registry.insecure=true
+        - --opt
+        - build-arg:GOPROXY=https://goproxy.cn,direct
+        - --opt
+        - build-arg:EXTRA={{inputs.parameters.arg-extra}}
+        - --opt
+        - build-arg:DPDK_VERSION={{inputs.parameters.dpkVersion}}
+        - --opt
+        - build-arg:REPO={{inputs.parameters.repo}}
+  - name: kaniko
+    inputs:
+      parameters:
+        - name: image
+        - name: dockerfile
+        - name: tag
+          default: master
+        - name: server
+          default: '172.11.0.206:30002'
+        - name: dpkVersion
+          default: DPDK_VERSION
+        - name: repo
+          default: ''
+    hostAliases:
+      - ip: "192.168.21.110"
+        hostnames:
+        - "harbor.wongearl.com"
+    outputs:
+      parameters:
+        - name: image
+          value: 172.11.0.206:30002/library/{{inputs.parameters.image}}
+    volumes:
+      - name: docker-config
+        secret:
+          secretName: docker-config
+      - name: cache
+        hostPath:
+          path: /mnt/data
+          type: DirectoryOrCreate
+      - name: buildkit
+        configMap:
+          name: buildkit
+    retryStrategy:
+      limit: "6"
+      retryPolicy: OnFailure
+    activeDeadlineSeconds: 2400
+    container:
+      image: gcr.io/kaniko-project/executor:latest
+      volumeMounts:
+        - name: work
+          mountPath: /work
+        - name: docker-config
+          mountPath: /.docker
+        - name: cache
+          mountPath: /cache
+      workingDir: /work/
+      env:
+        - name: DOCKER_CONFIG
+          value: /.docker
+      command:
+        - /kaniko/executor
+      args:
+        - --dockerfile={{inputs.parameters.dockerfile}}
+        - --context=dir://.
+        - --destination={{inputs.parameters.server}}/{{inputs.parameters.image}}
+        - --skip-tls-verify
+        - --skip-tls-verify-pull
+        - --build-arg
+        - DPDK_VERSION={{inputs.parameters.dpkVersion}}
+        - --build-arg
+        - REPO={{inputs.parameters.repo}}
+
+  - name: status
+    inputs:
+      parameters:
+        - name: commentIdentity
+          default: "AILink workflow status report."
+        - name: commentTemplate
+          default: ""
+    plugin:
+      gogit-executor-plugin:
+        owner: "{{workflow.parameters.owner}}"
+        repo: "{{workflow.parameters.repo}}"
+        pr: "{{workflow.parameters.pr}}"
+        status: "{{workflow.status}}"
+        commentIdentity: "{{inputs.parameters.commentIdentity}}"
+        commentTemplate: "{{inputs.parameters.commentTemplate}}"
+  - name: atomic
+    plugin:
+      argo-atomic-plugin: {}
+
+  - name: kustomize
+    inputs:
+      parameters:
+        - name: image
+          default: ":a"
+        - name: extra-image
+          default: ":b"
+    dag:
+      tasks:
+        - name: kustomize-set
+          template: kustomize-set
+          arguments:
+            parameters:
+              - name: image
+                value: "{{inputs.parameters.image}}"
+              - name: extra-image
+                value: "{{inputs.parameters.extra-image}}"
+        # - name: kustomize-build
+        #   depends: kustomize-set
+        #   template: kustomize-build
+
+  - name: kustomize-set
+    inputs:
+      parameters:
+        - name: image
+          default: ":a"
+        - name: extra-image
+          default: ":b"
+    container:
+      image: docker.io/traherom/kustomize-docker:2.0.0
+      args:
+        - kustomize
+        - edit
+        - set
+        - image
+        - "{{inputs.parameters.image}}"
+        - "{{inputs.parameters.extra-image}}"
+      workingDir: /work/config/default
+      volumeMounts:
+        - name: work
+          mountPath: /work
+
+  - name: kustomize-build
+    inputs:
+      parameters:
+        - name: path
+          default: "config/default"
+    outputs:
+      artifacts:
+      - name: install
+        path: /work/test.yaml
+    container:
+      image: docker.io/traherom/kustomize-docker:2.0.0
+      args:
+        - kustomize
+        - build
+        - "{{inputs.parameters.path}}"
+        - -o=test.yaml
+      workingDir: /work
+      volumeMounts:
+        - name: work
+          mountPath: /work
