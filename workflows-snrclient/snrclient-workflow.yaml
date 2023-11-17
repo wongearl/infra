@@ -1,179 +1,129 @@
-# The webhook URL is: https://localhost:2746/api/v1/events/namespace/
-
 apiVersion: argoproj.io/v1alpha1
 kind: WorkflowTemplate
 metadata:
-  name: pr-workflow
+  name: pr-snrclient
   namespace: default
 spec:
   entrypoint: main
   arguments:
     parameters:
-      - name: repo
-        value: git@https://github.com/wongearl/SonatypeNexusRepositoryClient.git
-      - name: image
-        value: surenpi/test
+      - name: repo-url
+        value: https://gh-proxy.com/github.com/wongearl/SonatypeNexusRepositoryClient.git
       - name: branch
-        value: master
+        value: main
       - name: pr
-        value: 1
+        value: "-1"
+      # the following parameters are required by hooks
+      - name: owner
+        value: wongeral
+      - name: repo
+        value: SonatypeNexusRepositoryClient
+      - name: label
+        value: SonatypeNexusRepositoryClient-build
 
-  volumeClaimTemplates:
-    - metadata:
-        name: work
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        resources:
-          requests:
-            storage: 64Mi
+  nodeSelector:
+    topology.kubernetes.io/zone: beijing
+
+  hooks:
+    exit:
+      templateRef:
+        name: library
+        template: status
+        clusterScope: true
+      expression: "{{workflow.parameters.pr}} >= 1"
+    all:
+      templateRef:
+        name: library
+        template: status
+        clusterScope: true
+      expression: "{{workflow.parameters.pr}} >= 1"
+    notify:
+      templateRef:
+        name: library
+        template: dingding
+        clusterScope: true
+      expression: workflow.status == "Succeeded" or workflow.status == "Failed" or workflow.status == "Error"
 
   templates:
   - name: main
     dag:
       tasks:
         - name: clone
-          template: clone
+          templateRef:
+            name: library
+            template: clone
+            clusterScope: true
           arguments:
             parameters:
               - name: repo
-                value: "{{workflow.parameters.repo}}"
+                value: "{{workflow.parameters.repo-url}}"
               - name: branch
                 value: "{{workflow.parameters.branch}}"
-        - name: fetch
-          template: fetch
-          depends: "clone"
-          arguments:
-            parameters:
               - name: pr
                 value: "{{workflow.parameters.pr}}"
-        - name: checkout
-          template: checkout
-          depends: "fetch"
+        - name: go-test
+          templateRef:
+            name: library
+            template: go-test
+            clusterScope: true
+          depends: clone
+        - name: code-check
+          template: code-check
+          depends: clone
           arguments:
             parameters:
-              - name: pr
-                value: "{{workflow.parameters.pr}}"
-        - name: build
-          template: image
-          depends: "checkout"
-          arguments:
-            parameters:
-              - name: image
-                value: "{{workflow.parameters.image}}"
               - name: path
                 value: "/work"
-  
-  - name: clone
+        - name: build-image
+          template: build-image
+          depends: clone
+          arguments:
+            parameters:
+              - name: version
+                value: "{{tasks.clone.outputs.parameters.version}}"
+
+        - name: atomic
+          templateRef:
+            name: library
+            template: atomic
+            clusterScope: true
+
+  - name: build-image
     inputs:
       parameters:
-        - name: repo
-        - name: branch
-    volumes:
-      - name: git-secret
-        secret:
-          defaultMode: 0400
-          secretName: gitlab-secret
+        - name: version
+          default: ""
+    steps:
+    - - name: image
+        templateRef:
+          name: library
+          template: image
+          clusterScope: true
+        arguments:
+          parameters:
+            - name: image
+              value: library/{{item.name}}:{{inputs.parameters.version}}
+            - name: dockerfile
+              value: build/{{item.context}}
+            - name: tag
+              value: "{{inputs.parameters.version}}"
+        withItems:
+        - { name: 'snrclient', context: 'snrclient' }
+
+  - name: code-check
     container:
-      volumeMounts:
-        - mountPath: /work
-          name: work
-        - mountPath: /root/.ssh/
-          name: git-secret
-      image: alpine/git:v2.26.2
-      workingDir: /work
-      args:
-        - clone
-        - --depth
-        - "1"
-        - --branch
-        - "{{inputs.parameters.branch}}"
-        - --single-branch
-        - "{{inputs.parameters.repo}}"
-        - .
-  - name: fetch
-    depends: "clone"
-    inputs:
-      parameters:
-        - name: pr
-    volumes:
-      - name: git-secret
-        secret:
-          defaultMode: 0400
-          secretName: gitlab-secret
-    container:
-      volumeMounts:
-        - mountPath: /work
-          name: work
-        - mountPath: /root/.ssh/
-          name: git-secret
-      image: alpine/git:v2.26.2
-      workingDir: /work
-      args:
-        - fetch
-        - origin
-        - merge-requests/{{inputs.parameters.pr}}/head:mr-{{inputs.parameters.pr}}
-  - name: checkout
-    depends: "fetch"
-    inputs:
-      parameters:
-        - name: pr
-    volumes:
-      - name: git-secret
-        secret:
-          defaultMode: 0400
-          secretName: gitlab-secret
-    container:
-      volumeMounts:
-        - mountPath: /work
-          name: work
-        - mountPath: /root/.ssh/
-          name: git-secret
-      image: alpine/git:v2.26.2
-      workingDir: /work
-      args:
-        - checkout
-        - mr-{{inputs.parameters.pr}}
-  - name: image
-    inputs:
-      parameters:
-        - name: image
-        - name: path
-    volumes:
-      - name: docker-config
-        secret:
-          secretName: docker-config
-      - name: cache
-        hostPath:
-          path: /mnt/data
-          type: DirectoryOrCreate
-        #persistentVolumeClaim:
-        #  claimName: image-cache
-    container:
-      image: moby/buildkit:v0.9.3-rootless
+      image: golang:1.20
       volumeMounts:
         - name: work
           mountPath: /work
-        - name: docker-config
-          mountPath: /.docker
-        - name: cache
-          mountPath: /cache
-      workingDir: /work/
-      securityContext:
-        privileged: true
+      workingDir: /work
       env:
-        - name: BUILDKITD_FLAGS
-          value: --oci-worker-no-process-sandbox
-        - name: DOCKER_CONFIG
-          value: /.docker
+        - name: GOPROXY
+          value: https://goproxy.cn,direct
+        - name: GOSUMDB
+          value: sum.golang.org
       command:
-        - buildctl-daemonless.sh
+        - make
       args:
-        - build
-        - --frontend
-        - dockerfile.v0
-        - --local
-        - context=.
-        - --local
-        - dockerfile=.
-        - --output
-        - type=image,name=docker.io/{{inputs.parameters.image}},push=true
+        - vet
+        - fmt
