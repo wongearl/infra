@@ -1,0 +1,67 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: workflow-infra
+  namespace: default
+spec:
+  entrypoint: main
+  arguments:
+    parameters:
+      - name: repo-url
+        value: git@https://gh-proxy.com/github.com/wongearl/infra.git
+      - name: branch
+        value: master
+      - name: pr
+        value: "-1"
+      # the following parameters are required by hooks
+      - name: owner
+        value: infra
+      - name: repo
+        value: workflows
+
+  templates:
+  - name: main
+    dag:
+      tasks:
+        - name: clone
+          templateRef:
+            name: library
+            template: clone
+            clusterScope: true
+          arguments:
+            parameters:
+              - name: repo
+                value: "{{workflow.parameters.repo-url}}"
+              - name: branch
+                value: "{{workflow.parameters.branch}}"
+              - name: pr
+                value: "{{workflow.parameters.pr}}"
+        - name: check
+          depends: clone
+          templateRef:
+            name: library-validation
+            template: kubeconform
+            clusterScope: true
+          arguments:
+            parameters:
+              - name: ignore-filename
+                value: ".workflows/workflow.yaml"
+        - name: atomic
+          templateRef:
+            name: library
+            template: atomic
+            clusterScope: true
+
+  hooks:
+    exit:
+      templateRef:
+        name: library
+        template: status
+        clusterScope: true
+      expression: "{{workflow.parameters.pr}} >= 1"
+    all:
+      templateRef:
+        name: library
+        template: status
+        clusterScope: true
+      expression: "{{workflow.parameters.pr}} >= 1"

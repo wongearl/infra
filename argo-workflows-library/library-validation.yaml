@@ -1,0 +1,55 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ClusterWorkflowTemplate
+metadata:
+  name: library-validation
+spec:
+  templates:
+  - name: kubeconform
+    inputs:
+      parameters:
+        - name: target
+          default: "."
+        - name: ignore-filename
+          default: "^(.yaml$)"
+        - name: schema1
+          default: 'https://gh-proxy.com/https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/[[.NormalizedKubernetesVersion]]-standalone[[.StrictSuffix]]/[[.ResourceKind]][[.KindSuffix]].json'
+        - name: schema2
+          default: 'https://gh-proxy.com/https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/[[.Group]]/[[.ResourceKind]]_[[.ResourceAPIVersion]].json'
+        - name: schema3
+          default: 'https://gh-proxy.com/https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/[[.NormalizedKubernetesVersion]]/[[.ResourceKind]][[.KindSuffix]].json'
+        - name: local-schema
+          default: ".tmp"
+    container:
+      args:
+        - -schema-location
+        - "{{inputs.parameters.schema1}}"
+        - -schema-location
+        - "{{inputs.parameters.schema2}}"
+        - -schema-location
+        - "{{inputs.parameters.schema3}}"
+        - -schema-location
+        - "{{inputs.parameters.local-schema}}"
+        # - -ignore-missing-schemas=true
+        - -ignore-filename-pattern=kustomization.yaml
+        - -ignore-filename-pattern=kustomizeconfig.yaml
+        - -ignore-filename-pattern={{inputs.parameters.ignore-filename}}
+        - -strict
+        - -cache=/work/
+        - -delims=[[,]]
+        - -summary
+        - -output=json
+        - -skip=ControllerManagerConfig
+        - -verbose
+        - -n=18
+        - "{{inputs.parameters.target}}"
+      command:
+        - /kubeconform
+      image: ghcr.io/linuxsuren/kubeconform
+      workingDir: /work
+      volumeMounts:
+        - name: work
+          mountPath: /work
+    activeDeadlineSeconds: 1800
+    retryStrategy:
+      limit: "3"
+      retryPolicy: OnFailure

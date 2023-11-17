@@ -1,0 +1,19 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowEventBinding
+metadata:
+  name: workflow-infra
+  namespace: default
+spec:
+  event:
+    selector: payload.event_type == "merge_request" && payload.project.name == "workflows" && payload.object_attributes.state == "opened"
+  submit:
+    workflowTemplateRef:
+      name: workflow-infra
+    arguments:
+      parameters:
+      - name: branch
+        valueFrom:
+          event: payload.object_attributes.source_branch
+      - name: pr
+        valueFrom:
+          event: payload.object_attributes.iid
