@@ -2,7 +2,7 @@ data:
   .dockerconfigjson: eyJhdXRocyI6eyIxNzIuMTEuMC4yMDY6MzAwMDIiOnsidXNlcm5hbWUiOiJhZG1pbiIsInBhc3N3b3JkIjoiSGFyYm9yMTIzNDUiLCJhdXRoIjoiWVdSdGFXNDZTR0Z5WW05eU1USXpORFU9In19fQ==
 kind: Secret
 metadata:
-  name: harbor
+  name: docker-config
   namespace: default
 type: kubernetes.io/dockerconfigjson
 apiVersion: v1

@@ -256,7 +256,7 @@ spec:
     outputs:
       parameters:
         - name: image
-          value: leovamwong/{{inputs.parameters.image}}
+          value: 172.11.0.206:30002/library/{{inputs.parameters.image}}
     volumes:
       - name: docker-config
         secret:
@@ -337,7 +337,7 @@ spec:
     outputs:
       parameters:
         - name: image
-          value: leovamwong/{{inputs.parameters.image}}
+          value: 172.11.0.206:30002/library/{{inputs.parameters.image}}
     volumes:
       - name: docker-config
         secret:

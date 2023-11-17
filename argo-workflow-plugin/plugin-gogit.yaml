@@ -5,14 +5,14 @@ data:
     args:
     - status
     - --provider
-    - gitlab
+    - github
     - --target
     - https://github.com/
     - --token=xxxxxxxx
     - --username=wongearl
     - --server=https://github.com/
     - --create-comment=true
-    - --comment-identity=AILink workflow status report.
+    - --comment-identity=Workflow status report.
     image: ghcr.io/linuxsuren/workflow-executor-gogit:v0.0.13
     imagePullPolicy: IfNotPresent
     command:
