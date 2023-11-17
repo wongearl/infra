@@ -4,16 +4,10 @@ data:
     debug = true
     [worker.containerd]
       namespace = "buildkit"
-    [registry."10.121.218.184:30002"]
-      http = true
-      insecure = true
-    [registry."172.11.0.6:30002"]
+    [registry."172.11.0.206:30002"]
       http = true
       insecure = true
     [registry."harbor.wongearl.com"]
-      http = false
-      insecure = true
-    [registry."192.168.21.110"]
       http = false
       insecure = true
 kind: ConfigMap

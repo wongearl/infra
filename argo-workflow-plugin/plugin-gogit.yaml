@@ -7,10 +7,10 @@ data:
     - --provider
     - gitlab
     - --target
-    - https://172.11.0.6:30298
-    - --token=h-zez9CWzyzykbLoS53s
-    - --username=zhaoxiaojie
-    - --server=http://10.121.218.82:6080/
+    - https://github.com/
+    - --token=xxxxxxxx
+    - --username=wongearl
+    - --server=https://github.com/
     - --create-comment=true
     - --comment-identity=AILink workflow status report.
     image: ghcr.io/linuxsuren/workflow-executor-gogit:v0.0.13

@@ -248,7 +248,7 @@ spec:
         - name: arg-extra
           default: 'empty'
         - name: server
-          default: 'https://hub.docker.com/'
+          default: '172.11.0.206:30002'
         - name: dpkVersion
           default: DPDK_VERSION
         - name: repo
@@ -325,7 +325,7 @@ spec:
         - name: tag
           default: master
         - name: server
-          default: 'https://hub.docker.com/'
+          default: '172.11.0.206:30002'
         - name: dpkVersion
           default: DPDK_VERSION
         - name: repo
