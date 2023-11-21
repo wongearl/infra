@@ -1,0 +1,17 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowEventBinding
+metadata:
+  name: branch-snrclient
+  namespace: default
+spec:
+  event:
+    # after is 0 means pr was merged
+    selector: payload.object_kind == "push" && payload.project.name == "SonatypeNexusRepositoryClient" && (payload.ref == "refs/heads/master" || payload.ref startsWith "refs/heads/release-")
+  submit:
+    workflowTemplateRef:
+      name: pr-snrclient
+    arguments:
+      parameters:
+      - name: branch
+        valueFrom:
+          event: payload.ref

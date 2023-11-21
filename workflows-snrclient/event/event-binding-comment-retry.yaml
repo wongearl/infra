@@ -1,0 +1,19 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowEventBinding
+metadata:
+  name: snrclient-comment-retry
+  namespace: default
+spec:
+  event:
+    selector: payload.event_type == "note" && payload.project.name == "SonatypeNexusRepositoryClient" && payload.merge_request.state == "opened" && payload.object_attributes.note == "/retry"
+  submit:
+    workflowTemplateRef:
+      name: pr-snrclient
+    arguments:
+      parameters:
+      - name: branch
+        valueFrom:
+          event: payload.merge_request.source_branch
+      - name: pr
+        valueFrom:
+          event: payload.merge_request.iid
