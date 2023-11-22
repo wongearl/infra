@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sample
+  namespace: argocd
+spec:
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    repoURL: ssh://git@172.11.0.206:30022/dev/learn-pipeline-go.git
+    targetRevision: HEAD
+    kustomize:       # can be : Kustomize,Helm,directory,custom tool etc.
+      namePrefix: foo
+    path: kustomize                           # 指定父目录
+  syncPolicy:
+    syncOptions:
+    - CreateNamespace=true
+    automated:
+      prune: true
+      selfHeal: true
