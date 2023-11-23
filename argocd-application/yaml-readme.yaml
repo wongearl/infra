@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: yaml-readme
+  namespace: argocd
+spec:
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    path: .github/workflows/                            # It will generate multiple Argo CD application manifests 
+                                                        # base on YAML files from this directory.
+                                                        # Please make sure the path ends with slash.
+    plugin: {}                                          # Argo CD will choose the corresponding CMP automatically
+    repoURL: https://gitee.com/linuxsuren/yaml-readme   # a sample project for discovering manifests
+    targetRevision: HEAD
+  syncPolicy:
+    automated:
+      selfHeal: true
